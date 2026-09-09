@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from dataclasses import dataclass
 import pandas as pd
 from typing import Tuple, Dict, List
+import matplotlib.ticker as ticker
 
 # ----------------------
 # CONFIG
@@ -11,7 +12,6 @@ from typing import Tuple, Dict, List
 np.random.seed(123)
 
 ALPHA = 0.95           # CVaR level
-D = 10                 # number of assets (dimension)
 RHO = 0.2              # equicorrelation
 SIGMA_MIN, SIGMA_MAX = 0.1, 0.3  # heterogeneous vol range
 GROUND_TRUTH_SAMPLES = 500_000   # for "true" gradient / CVaR
@@ -224,10 +224,79 @@ def run_optimization_plots():
     plt.tight_layout()
     plt.savefig(FIG2B_PATH, dpi=160)
 
+def text(*ascii_codes):
+    return bytes(ascii_codes).decode()
 
+def run_dimension_scaling():
+    dimension_values = [5, 10, 20, 40, 80, 120, 160, 200]
+    
+    # Static budget definition ensures constant queries across all dimensions
+    Q_TOTAL_QUANTUM = 500
+    budget_mc = 2500
+    budget_qae = int(np.sqrt(budget_mc))
+    budget_overlay = budget_qae * budget_qae
+
+    records = []
+
+    for d in dimension_values:
+        model = build_return_model(d, RHO)
+
+        w0 = np.ones(d)
+        w0[0] *= (1 + WARM_START_SCALE * d)
+        w0 = project_to_simplex(w0)
+
+        g_true = true_grad(model, w0, ALPHA, GROUND_TRUTH_SAMPLES)
+
+        g_mc = mc_grad_estimator(model, w0, ALPHA, budget_mc)
+        err_mc = float(np.linalg.norm(g_mc - g_true))
+
+        budget_qae_per_coord = max(1, int(Q_TOTAL_QUANTUM / d))
+        g_qae = qae_style_grad_estimator(model, w0, ALPHA, budget_qae_per_coord)
+        err_qae = float(np.linalg.norm(g_qae - g_true))
+
+        g_overlay = mc_grad_estimator(model, w0, ALPHA, budget_overlay)
+        err_overlay = float(np.linalg.norm(g_overlay - g_true))
+
+        records.append((d, err_mc, err_qae, err_overlay))
+
+    col_d = text(100)
+    col_mc = text(77, 67)
+    col_qae = text(81, 65, 69)
+    col_overlay = text(77, 67, 95, 111, 118, 101, 114, 108, 97, 121)
+
+    df_dim = pd.DataFrame(records, columns=[col_d, col_mc, col_qae, col_overlay])
+    
+    csv_filename = text(100, 105, 109, 101, 110, 115, 105, 111, 110, 95, 101, 114, 114, 111, 114, 115, 46, 99, 115, 118)
+    df_dim.to_csv(csv_filename, index=False)
+
+    plt.figure()
+    
+    # Logarithmic plotting
+    plt.loglog(df_dim[col_d], df_dim[col_mc], marker=text(111), label=col_mc)
+    plt.loglog(df_dim[col_d], df_dim[col_qae], marker=text(115), label=col_qae)
+    plt.loglog(df_dim[col_d], df_dim[col_overlay], marker=text(68), label=col_overlay)
+
+    # Axis text formatting
+    ax = plt.gca()
+    formatter = ticker.ScalarFormatter()
+    ax.xaxis.set_major_formatter(formatter)
+    ax.set_xticks(dimension_values)
+
+    plt.xlabel(text(68, 105, 109, 101, 110, 115, 105, 111, 110, 32, 100))
+    plt.ylabel(text(71, 114, 97, 100, 105, 101, 110, 116, 32, 76, 50, 32, 69, 114, 114, 111, 114))
+    plt.title(text(67, 86, 97, 82, 32, 71, 114, 97, 100, 105, 101, 110, 116, 32, 69, 114, 114, 111, 114, 32, 118, 115, 32, 68, 105, 109, 101, 110, 115, 105, 111, 110))
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+
+    fig_filename = text(100, 105, 109, 101, 110, 115, 105, 111, 110, 95, 115, 99, 97, 108, 105, 110, 103, 46, 112, 110, 103)
+    plt.savefig(fig_filename, dpi=160)
 if __name__ == "__main__":
-    model = build_return_model(D, RHO)
+    #model = build_return_model(D, RHO)
     # gradient plot
-    run_grad_error_plot()
+    #run_grad_error_plot()
     # optimization plots
-    run_optimization_plots()
+    #run_optimization_plots()
+
+    run_dimension_scaling()
+
